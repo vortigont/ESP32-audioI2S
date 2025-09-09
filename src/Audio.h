@@ -13,6 +13,7 @@
 #include "esp_arduino_version.h"
 #include <vector>
 #include <deque>
+#include <charconv>
 #include <functional>
 #include <Arduino.h>
 #include <libb64/cencode.h>
@@ -45,8 +46,7 @@ static constexpr std::array<const char*, 13> eventStr = {"info", "id3data", "eof
 //----------------------------------------------------------------------------------------------------------------------
 
 class AudioBuffer {
-// AudioBuffer will be allocated in PSRAM, If PSRAM not available or has not enough space AudioBuffer will be
-// allocated in FlashRAM with reduced size
+// AudioBuffer will be allocated in PSRAM
 //
 //  m_buffer            m_readPtr                 m_writePtr                 m_endPtr
 //   |                       |<------dataLength------->|<------ writeSpace ----->|
@@ -162,6 +162,8 @@ class Audio{
     uint32_t     getBitRate();
     uint32_t     getAudioFileDuration();
     uint32_t     getAudioCurrentTime();
+    uint32_t     getAudioFilePosition();
+    bool         setAudioFilePosition(uint32_t pos);
     uint16_t     getVUlevel();
     uint32_t     inBufferFilled();            // returns the number of stored bytes in the inputbuffer
     uint32_t     inBufferFree();              // returns the number of free bytes in the inputbuffer
@@ -263,6 +265,7 @@ class Audio{
     uint32_t     streamavail() { return m_client ? m_client->available() : 0; }
     void         IIR_calculateCoefficients(int8_t G1, int8_t G2, int8_t G3);
     bool         ts_parsePacket(uint8_t* packet, uint8_t* packetStart, uint8_t* packetLength);
+    uint64_t     getLastGranulePosition();
 
     //+++ create a T A S K  for playAudioData(), output via I2S +++
   public:
@@ -277,8 +280,8 @@ class Audio{
     void         performAudioTask();
 
     //+++ H E L P   F U N C T I O N S +++
-    uint16_t     readMetadata(uint16_t b, bool first = false);
-    int32_t      getChunkSize(uint8_t *readedBytes, bool first = false);
+    bool         readMetadata(uint16_t b, uint16_t *readedBytes, bool first = false);
+    int32_t      getChunkSize(uint16_t *readedBytes, bool first = false);
     bool         readID3V1Tag();
     int32_t      newInBuffStart(int32_t m_resumeFilePos);
     boolean      streamDetection(uint32_t bytesAvail);
@@ -386,6 +389,24 @@ class Audio{
                 }
             }
             if (result >= 0) break;
+        }
+        return result;
+    }
+
+    // Find the last instance of Str in the buffer backwards and checks end-of-stream-bit
+    int specialIndexOfLast(uint8_t* base, const char* str, int baselen) {
+        int result = -1;
+        if (strlen(str) > baselen) return -1; // too short buffer
+
+        for (int i = baselen - strlen(str); i >= 0; i--) { // search backwards, start at the end of the buffer
+            int match = 1;
+            for (int j = 0; j < strlen(str); j++) {
+                if (base[i + j] != str[j]) {
+                    match = 0;
+                    break;
+                }
+            }
+            if(match) return i;
         }
         return result;
     }
@@ -653,18 +674,13 @@ private:
     uint16_t        m_streamTitleHash = 0;          // remember streamtitle, ignore multiple occurence in metadata
     uint16_t        m_timeout_ms = 250;
     uint16_t        m_timeout_ms_ssl = 2700;
-    uint8_t         m_flacBitsPerSample = 0;        // bps should be 16
-    uint8_t         m_flacNumChannels = 0;          // can be read out in the FLAC file header
-    uint32_t        m_flacSampleRate = 0;           // can be read out in the FLAC file header
-    uint16_t        m_flacMaxFrameSize = 0;         // can be read out in the FLAC file header
-    uint16_t        m_flacMaxBlockSize = 0;         // can be read out in the FLAC file header
-    uint32_t        m_flacTotalSamplesInStream = 0; // can be read out in the FLAC file header
     uint32_t        m_metaint = 0;                  // Number of databytes between metadata
     uint32_t        m_chunkcount = 0 ;              // Counter for chunked transfer
     uint32_t        m_t0 = 0;                       // store millis(), is needed for a small delay
-    uint32_t        m_bytesNotConsumed = 0;          // pictures or something else that comes with the stream
+    uint32_t        m_bytesNotConsumed = 0;         // pictures or something else that comes with the stream
+    uint64_t        m_lastGranulePosition = 0;      // necessary to calculate the duration in OPUS and VORBIS
     int32_t         m_resumeFilePos = -1;           // the return value from stopSong(), (-1) is idle
-    int32_t         m_fileStartTime = -1;            // may be set in connecttoFS()
+    int32_t         m_fileStartTime = -1;           // may be set in connecttoFS()
     uint16_t        m_m3u8_targetDuration = 10;     //
     uint32_t        m_stsz_numEntries = 0;          // num of entries inside stsz atom (uint32_t)
     uint32_t        m_stsz_position = 0;            // pos of stsz atom within file
@@ -703,13 +719,11 @@ private:
     bool            m_f_acceptRanges = false;
     bool            m_f_reset_m3u8Codec = true;     // reset codec for m3u8 stream
     bool            m_f_connectionClose = false;    // set in parseHttpResponseHeader
-    uint32_t        m_audioFileDuration = 0;
-    float           m_audioCurrentTime = 0;
+    uint32_t        m_audioFileDuration = 0;        // seconds
+    uint32_t        m_audioCurrentTime = 0;         // seconds
     float           m_resampleError = 0.0f;
     float           m_resampleRatio = 1.0f;         // resample ratio for e.g. 44.1kHz to 48kHz
     float           m_resampleCursor = 0.0f;        // next frac in resampleTo48kStereo
-
-
 
     uint32_t        m_audioDataStart = 0;           // in bytes
     size_t          m_audioDataSize = 0;            //

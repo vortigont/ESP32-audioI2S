@@ -7,7 +7,6 @@
 
 namespace audiolib {
     struct sylt_t {
-        bool         seen;
         size_t       size;
         uint32_t     pos;
         char         lang[5];
@@ -60,7 +59,7 @@ namespace audiolib {
         bool         firstBytes;
         bool         f_chunkFinished;
         uint32_t     byteCounter;
-        size_t       chunkSize;
+        int32_t      chunkSize;
         uint16_t     ID3WritePtr;
         uint16_t     ID3ReadPtr;
         ps_ptr<uint8_t>ID3Buff;
@@ -195,13 +194,14 @@ namespace audiolib {
         bool      f_skipCRLF = false;
         uint32_t  availableBytes;
         bool      f_clientIsConnected;
-        uint8_t   readedBytes;
+        uint16_t  readedBytes;
     };
 
     struct gchs_t { // used in getChunkSize
         bool f_skipCRLF;
         bool isHttpChunked;
         size_t transportLimit;
+        bool oneByteOfTwo;
     };
 
     struct pwf_t { // used in processWebFile
@@ -238,7 +238,7 @@ namespace audiolib {
 
     struct rmet_t { // used in readMetadata
         uint16_t pos_ml = 0; // determines the current position in metaline
-        uint16_t metalen = 0;
+        uint16_t metaDataSize = 0;
         uint16_t res = 0;
     };
 
@@ -270,6 +270,12 @@ namespace audiolib {
         uint32_t picLen;
         uint32_t duration;
         uint32_t nominalBitrate;
+        uint8_t  numChannels;
+        uint8_t  bitsPerSample;
+        uint32_t sampleRate;
+        uint32_t maxFrameSize;
+        uint32_t maxBlockSize;
+        uint32_t totalSamplesInStream;
     };
 
     struct phreh_t { // used in parseHttpResponseHeader
